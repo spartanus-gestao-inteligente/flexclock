@@ -1,8 +1,10 @@
 package br.com.flexclock.opencode;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -24,10 +26,12 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * HTTP client of the local OpenCode server.
  *
- * <p>It speaks only the documented endpoints: {@code GET /global/health}, {@code GET /session},
- * {@code GET /session/{id}}, {@code POST /session/{id}/abort} and {@code POST /session/{id}/message}.
- * It never starts, signals or kills the OpenCode process, never runs a shell and never reads or writes
- * a file, so it has no process control surface at all (requirement RF-142).
+ * <p>It is the single transport of the product and speaks only the documented endpoints:
+ * {@code GET /global/health}, {@code GET /session}, {@code GET /session/{id}},
+ * {@code GET /session/{id}/message}, {@code POST /session/{id}/abort} and
+ * {@code POST /session/{id}/prompt_async}. It never starts, signals or kills the OpenCode process,
+ * never runs a shell and never reads or writes a file, so it has no process control surface at all
+ * (requirement RF-142).
  *
  * <p>The endpoint is read from the settings table on every call and validated again before use, so a
  * row edited outside the product can never point the client away from the loopback (requirement
@@ -52,6 +56,16 @@ public class OpenCodeClient implements OpenCodePort {
 
 	private static final String HEALTH_PATH = "/global/health";
 	private static final String SESSION_PATH = "/session";
+	private static final String MESSAGE_PATH = "/message";
+
+	/**
+	 * Asynchronous admission of the direction turn.
+	 *
+	 * <p>The synchronous message endpoint answers only when the agent turn ends, and the turn ends only
+	 * when the question is answered. The asynchronous endpoint admits the turn and returns immediately,
+	 * so the pause never blocks on the open question (decision 0034).
+	 */
+	private static final String PROMPT_ASYNC_PATH = "/prompt_async";
 
 	private static final Pattern SESSION_ID = Pattern.compile(
 			"[A-Za-z0-9_.:-]{1," + OpenCodeSession.MAX_SESSION_ID_LENGTH + "}");
@@ -109,13 +123,17 @@ public class OpenCodeClient implements OpenCodePort {
 	}
 
 	@Override
-	public void abort(String sessionId) {
-		abortAttempt(sessionId);
-	}
-
-	@Override
-	public void sendDirectionTurn(String sessionId, String directionTurnText) {
-		sendDirectionTurnAttempt(sessionId, directionTurnText);
+	public Optional<Instant> findContinuationAnswer(String sessionId, Instant since, String directionTurnText) {
+		String uri = effectiveEndpoint() + SESSION_PATH + "/" + requireSessionId(sessionId) + MESSAGE_PATH;
+		String body;
+		try {
+			body = get(uri);
+		}
+		catch (ApiException | BoundedRetry.TransientOpenCodeException exception) {
+			log.debug("The continuation of session {} could not be read", sessionId, exception);
+			return Optional.empty();
+		}
+		return earliestAnswerAfter(body, since, directionTurnText);
 	}
 
 	@Override
@@ -187,12 +205,62 @@ public class OpenCodeClient implements OpenCodePort {
 
 	private BoundedRetry.Attempt<Void> sendDirectionTurnAttempt(String sessionId, String directionTurnText) {
 		requireDirectionTurn(directionTurnText);
-		String uri = effectiveEndpoint() + SESSION_PATH + "/" + requireSessionId(sessionId) + "/message";
+		String uri = effectiveEndpoint() + SESSION_PATH + "/" + requireSessionId(sessionId) + PROMPT_ASYNC_PATH;
 		PromptRequest request = new PromptRequest(List.of(new PromptPart("text", directionTurnText)));
 		return withRetry("session.prompt", ErrorCode.PAUSE_FAILED, () -> {
 			post(uri, request);
 			return null;
 		});
+	}
+
+	private Optional<Instant> earliestAnswerAfter(String body, Instant since, String directionTurnText) {
+		if (body == null || body.isBlank()) {
+			return Optional.empty();
+		}
+		JsonNode root;
+		try {
+			root = objectMapper.readTree(body);
+		}
+		catch (RuntimeException exception) {
+			log.debug("The OpenCode message payload is not valid JSON", exception);
+			return Optional.empty();
+		}
+		if (root == null || !root.isArray()) {
+			return Optional.empty();
+		}
+		Instant earliest = null;
+		for (JsonNode message : root.values()) {
+			JsonNode info = message.path("info");
+			if (!"user".equals(info.path("role").asString(""))) {
+				continue;
+			}
+			long created = info.path("time").path("created").asLong(0L);
+			if (created <= since.toEpochMilli()) {
+				continue;
+			}
+			String text = textOf(message.path("parts"));
+			if (text.isBlank() || text.strip().equals(directionTurnText.strip())) {
+				continue;
+			}
+			Instant candidate = Instant.ofEpochMilli(created);
+			if (earliest == null || candidate.isBefore(earliest)) {
+				earliest = candidate;
+			}
+		}
+		return Optional.ofNullable(earliest);
+	}
+
+	private String textOf(JsonNode parts) {
+		if (!parts.isArray()) {
+			return "";
+		}
+		StringBuilder text = new StringBuilder();
+		for (JsonNode part : parts.values()) {
+			if ("text".equals(part.path("type").asString(""))) {
+				text.append(part.path("text").asString(""));
+			}
+		}
+		return text.toString();
 	}
 
 	private <T> BoundedRetry.Attempt<T> withRetry(String operation, ErrorCode exhaustedCode, Supplier<T> action) {

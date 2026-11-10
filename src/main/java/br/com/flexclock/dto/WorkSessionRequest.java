@@ -1,4 +1,4 @@
-package br.com.flexclock.time;
+package br.com.flexclock.dto;
 
 import br.com.flexclock.enums.TimeMode;
 import jakarta.validation.constraints.NotNull;

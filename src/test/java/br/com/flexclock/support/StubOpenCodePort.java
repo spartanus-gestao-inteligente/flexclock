@@ -1,8 +1,10 @@
 package br.com.flexclock.support;
 
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import br.com.flexclock.common.ApiException;
 import br.com.flexclock.common.ErrorCode;
@@ -16,8 +18,9 @@ import br.com.flexclock.opencode.OpenCodeSession;
  *
  * <p>It replaces the HTTP client in the integration tests: it holds the sessions the fake server
  * knows, it can report a session as missing and it can simulate an unreachable server, which is
- * exactly the three cases the anchor lifecycle must distinguish (decision 0046). The pause operations
- * are not exercised by these tests and answer with a refusal, so an unexpected call is visible.
+ * exactly the three cases the anchor lifecycle must distinguish (decision 0046). The pause and the
+ * continuation detection are not exercised by these tests: the pause answers with a refusal and the
+ * detector with no answer, so an unexpected call is visible and never invented.
  */
 public class StubOpenCodePort implements OpenCodePort {
 
@@ -94,19 +97,15 @@ public class StubOpenCodePort implements OpenCodePort {
 	}
 
 	@Override
-	public void abort(String sessionId) {
-		requireAvailable();
-	}
-
-	@Override
-	public void sendDirectionTurn(String sessionId, String directionTurnText) {
-		requireAvailable();
-	}
-
-	@Override
 	public OpenCodePauseResult pause(String sessionId, String directionTurnText) {
 		requireAvailable();
 		throw new UnsupportedOperationException("The stub does not exercise the pause transport.");
+	}
+
+	@Override
+	public Optional<Instant> findContinuationAnswer(String sessionId, Instant since, String directionTurnText) {
+		requireAvailable();
+		return Optional.empty();
 	}
 
 	private void requireAvailable() {

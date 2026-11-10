@@ -26,6 +26,9 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
 import br.com.flexclock.common.InstanceDescriptor;
+import br.com.flexclock.dto.ClockState;
+import br.com.flexclock.dto.WorkSessionResponse;
+import br.com.flexclock.dto.WorkSessionResult;
 import br.com.flexclock.enums.TimeMode;
 import br.com.flexclock.support.MutableClock;
 import br.com.flexclock.support.SqliteIntegrationTest;

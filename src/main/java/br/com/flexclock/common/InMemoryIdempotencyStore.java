@@ -15,8 +15,9 @@ import org.springframework.stereotype.Component;
  * live. The bound protects a long running desktop session from unbounded growth. The store is
  * thread safe because two windows of the same product can write at the same time.
  *
- * <p>Phase 0 only: the write path arrives in Wave 1, and whether the store must survive a restart is
- * decided there.
+ * <p>It is the single store behind {@link IdempotencyService}, the one idempotency engine of every
+ * write path. The record of a write is stored only after the write committed, so a rollback never
+ * leaves a replayable result behind.
  */
 @Component
 public class InMemoryIdempotencyStore implements IdempotencyStore {

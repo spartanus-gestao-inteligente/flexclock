@@ -12,6 +12,7 @@ import java.util.List;
 
 import org.springframework.stereotype.Component;
 
+import br.com.flexclock.dto.TimeSegment;
 import br.com.flexclock.enums.PauseStatus;
 import br.com.flexclock.enums.TimeMode;
 import br.com.flexclock.model.AgentPause;

@@ -1,6 +1,5 @@
 package br.com.flexclock.dto;
 
-import br.com.flexclock.time.ClockState;
 
 /**
  * Result of anchoring a session: the anchor, the procedure it is linked to and the clock state of the

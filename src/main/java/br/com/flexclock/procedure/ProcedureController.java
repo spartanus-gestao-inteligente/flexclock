@@ -1,6 +1,7 @@
 package br.com.flexclock.procedure;
 
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,7 +18,8 @@ import org.springframework.web.bind.annotation.RestController;
 import br.com.flexclock.common.ContractVersion;
 import br.com.flexclock.common.ErrorResponse;
 import br.com.flexclock.common.IdempotencyFilter;
-import br.com.flexclock.common.IdempotentWrite;
+import br.com.flexclock.common.IdempotencyService;
+import br.com.flexclock.common.IdempotentResponse;
 import br.com.flexclock.dto.ProcedureResponse;
 import br.com.flexclock.dto.ProcedureTransitionRequest;
 import br.com.flexclock.enums.ProcedureStatus;
@@ -40,11 +42,11 @@ public class ProcedureController {
 
 
 	private final ProcedureService procedureService;
-	private final IdempotentWrite idempotentWrite;
+	private final IdempotencyService idempotencyService;
 
-	public ProcedureController(ProcedureService procedureService, IdempotentWrite idempotentWrite) {
+	public ProcedureController(ProcedureService procedureService, IdempotencyService idempotencyService) {
 		this.procedureService = procedureService;
-		this.idempotentWrite = idempotentWrite;
+		this.idempotencyService = idempotencyService;
 	}
 
 	/**
@@ -80,8 +82,10 @@ public class ProcedureController {
 	@PostMapping("/{procedureId}/complete")
 	public ResponseEntity<ProcedureResponse> complete(@PathVariable Long procedureId,
 			@RequestHeader(name = IdempotencyFilter.IDEMPOTENCY_KEY_HEADER) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "procedures.complete", procedureId, HttpStatus.OK,
-				ProcedureResponse.class, () -> procedureService.complete(procedureId));
+		IdempotentResponse<ProcedureResponse> response = idempotencyService.execute(idempotencyKey,
+				"procedures.complete", procedureId, HttpStatus.OK.value(), ProcedureResponse.class,
+				() -> procedureService.complete(procedureId));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**
@@ -103,8 +107,10 @@ public class ProcedureController {
 	@PostMapping("/{procedureId}/abort")
 	public ResponseEntity<ProcedureResponse> abort(@PathVariable Long procedureId,
 			@RequestHeader(name = IdempotencyFilter.IDEMPOTENCY_KEY_HEADER) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "procedures.abort", procedureId, HttpStatus.OK,
-				ProcedureResponse.class, () -> procedureService.abort(procedureId));
+		IdempotentResponse<ProcedureResponse> response = idempotencyService.execute(idempotencyKey,
+				"procedures.abort", procedureId, HttpStatus.OK.value(), ProcedureResponse.class,
+				() -> procedureService.abort(procedureId));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**
@@ -128,7 +134,10 @@ public class ProcedureController {
 	public ResponseEntity<ProcedureResponse> transition(@PathVariable Long procedureId,
 			@Valid @RequestBody ProcedureTransitionRequest request,
 			@RequestHeader(name = IdempotencyFilter.IDEMPOTENCY_KEY_HEADER) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "procedures.transition", request, HttpStatus.OK,
-				ProcedureResponse.class, () -> procedureService.transition(procedureId, request.status()));
+		IdempotentResponse<ProcedureResponse> response = idempotencyService.execute(idempotencyKey,
+				"procedures.transition", Map.of("procedureId", procedureId, "status", request.status().wireValue()),
+				HttpStatus.OK.value(), ProcedureResponse.class,
+				() -> procedureService.transition(procedureId, request.status()));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 }

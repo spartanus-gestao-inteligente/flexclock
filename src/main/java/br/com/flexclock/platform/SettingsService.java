@@ -118,9 +118,9 @@ public class SettingsService {
 	public IdempotentResponse<SettingResponse> update(String presentedKey, String presentedValue, SettingActor actor,
 			String idempotencyKey) {
 		SettingKey key = SettingKey.fromWireKey(presentedKey);
-		String fingerprint = idempotencyService.fingerprint(key.wireKey(), presentedValue, actor.wireValue());
-		return idempotencyService.execute(idempotencyKey, fingerprint, HttpStatus.OK.value(), SettingResponse.class,
-				() -> applyUpdate(key, presentedValue, actor));
+		SettingWrite write = new SettingWrite(key.wireKey(), presentedValue, actor.wireValue());
+		return idempotencyService.execute(idempotencyKey, "settings.update", write, HttpStatus.OK.value(),
+				SettingResponse.class, () -> applyUpdate(key, presentedValue, actor));
 	}
 
 	/**
@@ -133,9 +133,9 @@ public class SettingsService {
 	 */
 	public IdempotentResponse<LanguageResponse> updateLanguage(String presentedLanguage, SettingActor actor,
 			String idempotencyKey) {
-		String fingerprint = idempotencyService.fingerprint(SettingKey.LANGUAGE.wireKey(), presentedLanguage,
-				actor.wireValue());
-		return idempotencyService.execute(idempotencyKey, fingerprint, HttpStatus.OK.value(), LanguageResponse.class,
+		SettingWrite write = new SettingWrite(SettingKey.LANGUAGE.wireKey(), presentedLanguage, actor.wireValue());
+		return idempotencyService.execute(idempotencyKey, "settings.language", write, HttpStatus.OK.value(),
+				LanguageResponse.class,
 				() -> toLanguageResponse(applyUpdate(SettingKey.LANGUAGE, presentedLanguage, actor)));
 	}
 
@@ -199,5 +199,15 @@ public class SettingsService {
 
 	private <T> T inWriteTransaction(Supplier<T> action) {
 		return writeTransaction.execute(status -> action.get());
+	}
+
+	/**
+	 * Payload of a setting write, the value the idempotency fingerprint covers.
+	 *
+	 * @param key the canonical key of the catalogue
+	 * @param value the presented value, may be null
+	 * @param actor the principal performing the write
+	 */
+	private record SettingWrite(String key, String value, String actor) {
 	}
 }

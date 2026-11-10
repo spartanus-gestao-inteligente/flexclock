@@ -1,4 +1,4 @@
-package br.com.flexclock.pause;
+package br.com.flexclock.dto;
 
 import br.com.flexclock.enums.PauseReason;
 import jakarta.validation.constraints.NotNull;
