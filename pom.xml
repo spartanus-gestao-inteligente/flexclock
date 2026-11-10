@@ -39,6 +39,11 @@
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-validation</artifactId>
 		</dependency>
+		<!-- Flyway runs last, after Hibernate, and is disabled until the first migration exists. -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-flyway</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
@@ -111,6 +116,36 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+			<!--
+				The nine JRXML templates are compiled at build time, right after the classes and the
+				resources are in target/classes, so a broken template fails the build and the compiled
+				.jasper ships inside the jar. The compiled form is a build artifact: it is generated in
+				target and never committed (decision 0052).
+			-->
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.5.0</version>
+				<executions>
+					<execution>
+						<id>compile-jasper-templates</id>
+						<phase>process-classes</phase>
+						<goals>
+							<goal>exec</goal>
+						</goals>
+						<configuration>
+							<executable>java</executable>
+							<classpathScope>runtime</classpathScope>
+							<arguments>
+								<argument>-classpath</argument>
+								<classpath/>
+								<argument>br.com.flexclock.jasper.JasperTemplateCompiler</argument>
+								<argument>${project.build.outputDirectory}/reports</argument>
+							</arguments>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
