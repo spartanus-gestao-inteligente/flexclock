@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jasperReport name="FlexClockDownloadsReport" language="java" pageWidth="595" pageHeight="842" columnWidth="595" whenNoDataType="NO_DATA_SECTION" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0" uuid="de45090d-8e82-45eb-a487-4605651dfc82">
+	<style name="Base" default="true" mode="Transparent" forecolor="#EDF2F4" fontName="DejaVu Sans" fontSize="9.0"/>
+	<style name="ReportTitle" style="Base" forecolor="#D9A83F" fontName="DejaVu Sans" fontSize="22.0" bold="true"/>
+	<style name="ReportSubtitle" style="Base" forecolor="#EDF2F4" fontName="DejaVu Sans" fontSize="12.0" bold="true"/>
+	<style name="ReportMeta" style="Base" forecolor="#A9B6CC" fontName="DejaVu Sans" fontSize="8.5" bold="false"/>
+	<style name="ReportMetaSmall" style="Base" forecolor="#7F8DA3" fontName="DejaVu Sans" fontSize="7.0" bold="false"/>
+	<style name="CardLabel" style="Base" forecolor="#8E9CB3" fontName="DejaVu Sans" fontSize="6.5" bold="true"/>
+	<style name="CardValue" style="Base" forecolor="#D9A83F" fontName="DejaVu Sans" fontSize="15.0" bold="true"/>
+	<style name="CardSub" style="Base" forecolor="#7F8DA3" fontName="DejaVu Sans" fontSize="6.5" bold="false"/>
+	<style name="TableHead" style="Base" forecolor="#D9A83F" fontName="DejaVu Sans" fontSize="6.5" bold="true"/>
+	<style name="Cell" style="Base" forecolor="#C7D2E0" fontName="DejaVu Sans" fontSize="7.0" bold="false"/>
+	<style name="CellStrong" style="Base" forecolor="#D9A83F" fontName="DejaVu Sans" fontSize="7.0" bold="true"/>
+	<style name="CellPaused" style="Base" forecolor="#E8762B" fontName="DejaVu Sans" fontSize="7.0" bold="false"/>
+	<style name="SectionTitle" style="Base" forecolor="#D9A83F" fontName="DejaVu Sans" fontSize="10.0" bold="true"/>
+	<style name="SectionNote" style="Base" forecolor="#7F8DA3" fontName="DejaVu Sans" fontSize="6.5" bold="false"/>
+	<style name="FooterText" style="Base" forecolor="#7F8DA3" fontName="DejaVu Sans" fontSize="6.5" bold="false"/>
+	<style name="FooterStrong" style="Base" forecolor="#C7D2E0" fontName="DejaVu Sans" fontSize="6.5" bold="false"/>
+	<style name="EmptyNotice" style="Base" forecolor="#A9B6CC" fontName="DejaVu Sans" fontSize="10.0" bold="true"/>
+	<style name="PageFill" style="Base" mode="Opaque" backcolor="#0A0F1E"/>
+	<style name="GoldFill" style="Base" mode="Opaque" backcolor="#D9A83F"/>
+	<style name="SlateFill" style="Base" mode="Opaque" backcolor="#141D2E"/>
+	<style name="RowBackground" style="Base" mode="Opaque" backcolor="#0F1626">
+		<conditionalStyle backcolor="#0C1220">
+			<conditionExpression><![CDATA[($V{REPORT_COUNT}.intValue() % 2) == 0]]></conditionExpression>
+		</conditionalStyle>
+	</style>
+	<dataset name="chartData" uuid="99eda45c-7da4-4245-865f-3c3c601f0ff2">
+		<field name="label" class="java.lang.String"/>
+		<field name="value1" class="java.lang.Double"/>
+		<field name="value2" class="java.lang.Double"/>
+	</dataset>
+	<parameter name="logoPath" class="java.lang.String"/>
+	<parameter name="reportName" class="java.lang.String"/>
+	<parameter name="periodStart" class="java.lang.String"/>
+	<parameter name="periodEnd" class="java.lang.String"/>
+	<parameter name="generatedAt" class="java.lang.String"/>
+	<parameter name="footerNote" class="java.lang.String"/>
+	<parameter name="emptyMessage" class="java.lang.String"/>
+	<parameter name="chartTitle" class="java.lang.String"/>
+	<parameter name="chartNote" class="java.lang.String"/>
+	<parameter name="chartDataSource" class="net.sf.jasperreports.engine.JRDataSource"/>
+	<parameter name="kpi1Label" class="java.lang.String"/>
+	<parameter name="kpi1Value" class="java.lang.String"/>
+	<parameter name="kpi2Label" class="java.lang.String"/>
+	<parameter name="kpi2Value" class="java.lang.String"/>
+	<parameter name="kpi3Label" class="java.lang.String"/>
+	<parameter name="kpi3Value" class="java.lang.String"/>
+	<field name="occurredText" class="java.lang.String"/>
+	<field name="agentId" class="java.lang.String"/>
+	<field name="sourceOrDestination" class="java.lang.String"/>
+	<field name="item" class="java.lang.String"/>
+	<field name="itemType" class="java.lang.String"/>
+	<field name="sizeText" class="java.lang.String"/>
+	<field name="result" class="java.lang.String"/>
+	<background height="842" splitType="Stretch">
+		<element kind="rectangle" uuid="fdb55711-20b5-4832-98d4-6bee3053f698" x="0" y="0" width="595" height="842" style="PageFill">
+			<pen lineWidth="0.0" lineColor="#0A0F1E"/>
+		</element>
+
+		<element kind="rectangle" uuid="8b611c81-684d-41b2-8486-b2e539515693" x="0" y="0" width="595" height="3" style="GoldFill">
+			<pen lineWidth="0.0" lineColor="#0A0F1E"/>
+		</element>
+
+		<element kind="rectangle" uuid="1a13419c-7b41-4604-867d-945c4b137e08" x="0" y="838" width="595" height="4" style="SlateFill">
+			<pen lineWidth="0.0" lineColor="#0A0F1E"/>
+		</element>
+
+	</background>
+	<title height="112" splitType="Prevent">
+		<element kind="staticText" uuid="90436250-ee11-4d9a-a627-87a3ce8739dc" x="28" y="22" width="300" height="28" hTextAlign="Left" vTextAlign="Middle" style="ReportTitle">
+			<text><![CDATA[FLEX CLOCK]]></text>
+		</element>
+
+		<element kind="image" uuid="0c0ccdbc-b386-46d4-af0e-39ca879d7678" x="452" y="22" width="115" height="34" scaleImage="RetainShape">
+			<expression><![CDATA[$P{logoPath}]]></expression>
+			<printWhenExpression><![CDATA[$P{logoPath} != null]]></printWhenExpression>
+		</element>
+
+		<element kind="textField" uuid="4e8f336f-d4c8-49c8-851e-df1421ed23a0" x="28" y="52" width="400" height="16" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="ReportSubtitle">
+			<expression><![CDATA[$P{reportName}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="c87d8bb7-0ba6-427e-9d07-2003030e8047" x="28" y="68" width="400" height="12" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="ReportMeta">
+			<expression><![CDATA["Period " + $P{periodStart} + "  to  " + $P{periodEnd}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="97bbfc96-080d-4b2d-b67d-8871fa7d9eee" x="28" y="80" width="400" height="11" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="ReportMetaSmall">
+			<expression><![CDATA["Generated at " + $P{generatedAt}]]></expression>
+		</element>
+
+		<element kind="line" uuid="33f9fb26-9860-409d-975f-5c510838bd95" x="28" y="100" width="539" height="1">
+			<pen lineWidth="0.75" lineColor="#D9A83F"/>
+		</element>
+
+	</title>
+	<columnHeader height="22" splitType="Prevent">
+		<element kind="rectangle" uuid="fe9f6ee6-3efe-4623-9cd2-92757d5dcf0e" x="28" y="0" width="539" height="22" style="SlateFill">
+			<pen lineWidth="0.0" lineColor="#0A0F1E"/>
+		</element>
+
+		<element kind="staticText" uuid="d76c0e59-430a-4814-b1cc-00a2a5049e68" x="34" y="0" width="70" height="22" hTextAlign="Left" vTextAlign="Middle" style="TableHead">
+			<text><![CDATA[WHEN]]></text>
+		</element>
+
+		<element kind="staticText" uuid="d457b1c0-f752-45bf-a83b-5018e21eea63" x="116" y="0" width="72" height="22" hTextAlign="Left" vTextAlign="Middle" style="TableHead">
+			<text><![CDATA[AGENT]]></text>
+		</element>
+
+		<element kind="staticText" uuid="1b0673c1-f343-4eb1-b2de-fabf44b78543" x="200" y="0" width="98" height="22" hTextAlign="Left" vTextAlign="Middle" style="TableHead">
+			<text><![CDATA[SOURCE]]></text>
+		</element>
+
+		<element kind="staticText" uuid="3c1d4d1d-ea99-4b9a-ad31-b13e38a5adea" x="310" y="0" width="98" height="22" hTextAlign="Left" vTextAlign="Middle" style="TableHead">
+			<text><![CDATA[ITEM]]></text>
+		</element>
+
+		<element kind="staticText" uuid="79b592a9-8932-4436-bce7-7f97ca086f25" x="420" y="0" width="48" height="22" hTextAlign="Left" vTextAlign="Middle" style="TableHead">
+			<text><![CDATA[TYPE]]></text>
+		</element>
+
+		<element kind="staticText" uuid="01102b2f-6fed-4e40-896e-2001ee4b4e6b" x="480" y="0" width="48" height="22" hTextAlign="Right" vTextAlign="Middle" style="TableHead">
+			<text><![CDATA[SIZE]]></text>
+		</element>
+
+		<element kind="staticText" uuid="1d85bf59-fb63-4e00-b4c6-53fece869533" x="540" y="0" width="21" height="22" hTextAlign="Left" vTextAlign="Middle" style="TableHead">
+			<text><![CDATA[RESULT]]></text>
+		</element>
+
+	</columnHeader>
+	<detail>
+		<band height="26" splitType="Prevent">
+		<element kind="rectangle" uuid="d4913d41-2daa-44b2-83a6-1e59e308ad9a" x="28" y="0" width="539" height="26" style="RowBackground">
+			<pen lineWidth="0.0" lineColor="#0A0F1E"/>
+		</element>
+
+		<element kind="textField" uuid="9b261f1e-465a-4fb2-9002-1d24f61d9906" x="34" y="0" width="70" height="26" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="Cell">
+			<expression><![CDATA[$F{occurredText}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="770abcf2-cbf9-4b2b-b6f8-5f521f9982be" x="116" y="0" width="72" height="26" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="Cell">
+			<expression><![CDATA[$F{agentId}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="e9bd5101-0394-4916-8bf2-b8c9fd1deca6" x="200" y="0" width="98" height="26" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="Cell">
+			<expression><![CDATA[$F{sourceOrDestination}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="9745bdb5-b672-4718-8e87-d46ba85111b8" x="310" y="0" width="98" height="26" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="Cell">
+			<expression><![CDATA[$F{item}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="3a5bd96c-3b09-4d76-a3eb-c3783226b61c" x="420" y="0" width="48" height="26" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="Cell">
+			<expression><![CDATA[$F{itemType}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="31fc0090-ff59-4923-a07a-20db3f59415d" x="480" y="0" width="48" height="26" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle" style="CellStrong">
+			<expression><![CDATA[$F{sizeText}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="2d93437f-3093-4e26-8566-1f52a7d7142b" x="540" y="0" width="21" height="26" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="Cell">
+			<expression><![CDATA[$F{result}]]></expression>
+		</element>
+
+		</band>
+	</detail>
+	<noData height="44" splitType="Prevent">
+		<element kind="textField" uuid="0d086e92-ff89-459c-8dd1-624e50546a47" x="28" y="8" width="539" height="20" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="EmptyNotice">
+			<expression><![CDATA[$P{emptyMessage}]]></expression>
+		</element>
+
+	</noData>
+	<pageFooter height="26" splitType="Prevent">
+		<element kind="line" uuid="ff291d36-00fc-40b9-ac3e-9acc7beb59c3" x="28" y="2" width="539" height="1">
+			<pen lineWidth="0.5" lineColor="#22304A"/>
+		</element>
+
+		<element kind="staticText" uuid="b92f8d1c-49e9-4163-a98f-e16d29df4cb4" x="28" y="9" width="160" height="12" hTextAlign="Left" vTextAlign="Middle" style="FooterText">
+			<text><![CDATA[Spartanus Gestao Inteligente]]></text>
+		</element>
+
+		<element kind="textField" uuid="6ffebc13-95d2-4cc9-b28c-205007dc71cd" x="188" y="9" width="240" height="12" blankWhenNull="true" hTextAlign="Center" vTextAlign="Middle" style="SectionNote">
+			<expression><![CDATA[$P{footerNote}]]></expression>
+		</element>
+
+		<element kind="staticText" uuid="fcbf510c-080d-47c7-84f0-535426de0062" x="442" y="9" width="40" height="12" hTextAlign="Right" vTextAlign="Middle" style="FooterText">
+			<text><![CDATA[Page]]></text>
+		</element>
+
+		<element kind="textField" uuid="9cbcf70b-3102-4e85-9d9c-125e96aac4ea" x="486" y="9" width="14" height="12" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle" style="FooterStrong">
+			<expression><![CDATA[$V{PAGE_NUMBER}]]></expression>
+		</element>
+
+		<element kind="staticText" uuid="d54ca86e-0b78-433d-a3b2-37d0c7d0be80" x="504" y="9" width="14" height="12" hTextAlign="Center" vTextAlign="Middle" style="FooterText">
+			<text><![CDATA[of]]></text>
+		</element>
+
+		<element kind="textField" uuid="1d4cb772-02d6-4350-979a-a7822e61cc48" x="522" y="9" width="14" height="12" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle" style="FooterStrong" evaluationTime="Report">
+			<expression><![CDATA[$V{PAGE_NUMBER}]]></expression>
+		</element>
+
+	</pageFooter>
+	<summary height="390" splitType="Stretch">
+		<element kind="textField" uuid="d7080b31-b35c-4967-a590-d82ecb553e9e" x="28" y="0" width="320" height="16" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="SectionTitle">
+			<expression><![CDATA[$P{chartTitle}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="198abf1d-1366-4c2b-a270-ddf0b496cc5e" x="358" y="0" width="209" height="16" blankWhenNull="true" hTextAlign="Right" vTextAlign="Middle" style="SectionNote">
+			<expression><![CDATA[$P{chartNote}]]></expression>
+		</element>
+
+		<element kind="line" uuid="7380b0ab-1f12-421c-afe0-0eb1e176e6de" x="28" y="20" width="539" height="1">
+			<pen lineWidth="0.5" lineColor="#22304A"/>
+		</element>
+
+		<!-- chart -->
+		<element kind="chart" uuid="631861af-3db9-43cd-89a6-60d759fa7b61" x="28" y="26" width="539" height="290" showLegend="true" chartType="bar" legendColor="#C7D2E0" legendBackgroundColor="#141D2E" legendPosition="Bottom" renderType="draw">
+			<legendFont fontName="DejaVu Sans" fontSize="7.0"/>
+			<dataset kind="category">
+				<datasetRun uuid="0cfcbf20-761c-4a21-99d0-4f1669c607be" subDataset="chartData">
+					<dataSourceExpression><![CDATA[$P{chartDataSource}]]></dataSourceExpression>
+				</datasetRun>
+				<series>
+					<seriesExpression><![CDATA["Successes"]]></seriesExpression>
+					<categoryExpression><![CDATA[$F{label}]]></categoryExpression>
+					<valueExpression><![CDATA[$F{value1}]]></valueExpression>
+				</series>
+				<series>
+					<seriesExpression><![CDATA["Failures"]]></seriesExpression>
+					<categoryExpression><![CDATA[$F{label}]]></categoryExpression>
+					<valueExpression><![CDATA[$F{value2}]]></valueExpression>
+				</series>
+			</dataset>
+			<plot backcolor="#141D2E" backgroundAlpha="1.0" foregroundAlpha="1.0" showTickMarks="true" showTickLabels="true" showLabels="false" categoryAxisLabelColor="#8E9CB3" categoryAxisTickLabelColor="#A9B6CC" categoryAxisLineColor="#2A3A55" valueAxisLabelColor="#8E9CB3" valueAxisTickLabelColor="#A9B6CC" valueAxisLineColor="#2A3A55">
+				<seriesColor order="0" color="#D9A83F"/>
+				<seriesColor order="1" color="#2A3A55"/>
+				<itemLabel color="#EDF2F4">
+					<font fontName="DejaVu Sans" fontSize="6.5"/>
+				</itemLabel>
+			</plot>
+		</element>
+		<!-- key numbers -->
+		<element kind="rectangle" uuid="e06d30ad-e06a-4072-8596-22e90cc1fcf3" x="28" y="324" width="173" height="56" radius="6" style="SlateFill">
+			<pen lineWidth="0.5" lineColor="#22304A"/>
+		</element>
+
+		<element kind="textField" uuid="009761ea-7825-4a54-a8ea-9a31533916ee" x="40" y="333" width="149" height="10" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="CardLabel">
+			<expression><![CDATA[$P{kpi1Label}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="53ddafcb-7342-486d-82fb-d954adbcc7a2" x="40" y="344" width="149" height="22" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="CardValue">
+			<expression><![CDATA[$P{kpi1Value}]]></expression>
+		</element>
+
+		<element kind="staticText" uuid="5e055983-b670-4859-9178-deafe1077414" x="40" y="366" width="149" height="10" hTextAlign="Left" vTextAlign="Middle" style="CardSub">
+			<text><![CDATA[period total]]></text>
+		</element>
+
+		<element kind="rectangle" uuid="c597dc36-5526-4d93-ad18-b39cd9d51533" x="211" y="324" width="173" height="56" radius="6" style="SlateFill">
+			<pen lineWidth="0.5" lineColor="#22304A"/>
+		</element>
+
+		<element kind="textField" uuid="544e9697-8465-4705-b157-568ff46e415a" x="223" y="333" width="149" height="10" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="CardLabel">
+			<expression><![CDATA[$P{kpi2Label}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="3be2c73d-2988-45ba-aa94-7a8860ed0048" x="223" y="344" width="149" height="22" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="CardValue">
+			<expression><![CDATA[$P{kpi2Value}]]></expression>
+		</element>
+
+		<element kind="staticText" uuid="bbef89d5-3c7d-4ef6-82ac-8d4d6b771c64" x="223" y="366" width="149" height="10" hTextAlign="Left" vTextAlign="Middle" style="CardSub">
+			<text><![CDATA[period total]]></text>
+		</element>
+
+		<element kind="rectangle" uuid="0f1dd67c-4d94-440a-ac00-26a55fa69e94" x="394" y="324" width="173" height="56" radius="6" style="SlateFill">
+			<pen lineWidth="0.5" lineColor="#22304A"/>
+		</element>
+
+		<element kind="textField" uuid="a2e15a85-2654-4ebd-899e-0f40f0f3aa24" x="406" y="333" width="149" height="10" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="CardLabel">
+			<expression><![CDATA[$P{kpi3Label}]]></expression>
+		</element>
+
+		<element kind="textField" uuid="be1a4cc3-8452-4e17-ab1a-237002e0f32b" x="406" y="344" width="149" height="22" blankWhenNull="true" hTextAlign="Left" vTextAlign="Middle" style="CardValue">
+			<expression><![CDATA[$P{kpi3Value}]]></expression>
+		</element>
+
+		<element kind="staticText" uuid="4891ccac-7db0-4c74-bf75-eda649cfff42" x="406" y="366" width="149" height="10" hTextAlign="Left" vTextAlign="Middle" style="CardSub">
+			<text><![CDATA[period total]]></text>
+		</element>
+
+	</summary>
+</jasperReport>
