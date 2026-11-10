@@ -20,7 +20,13 @@ import br.com.flexclock.common.ContractVersion;
 import br.com.flexclock.common.ErrorCode;
 import br.com.flexclock.common.ErrorResponse;
 import br.com.flexclock.common.IdempotencyFilter;
-import br.com.flexclock.common.IdempotentWrite;
+import br.com.flexclock.common.IdempotencyService;
+import br.com.flexclock.common.IdempotentResponse;
+import br.com.flexclock.dto.PauseAbortRequest;
+import br.com.flexclock.dto.PauseHistoryItem;
+import br.com.flexclock.dto.PauseNotification;
+import br.com.flexclock.dto.PauseResponse;
+import br.com.flexclock.dto.PauseStateResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -42,11 +48,11 @@ import jakarta.validation.Valid;
 public class PauseController {
 
 	private final PauseService pauseService;
-	private final IdempotentWrite idempotentWrite;
+	private final IdempotencyService idempotencyService;
 
-	public PauseController(PauseService pauseService, IdempotentWrite idempotentWrite) {
+	public PauseController(PauseService pauseService, IdempotencyService idempotencyService) {
 		this.pauseService = pauseService;
-		this.idempotentWrite = idempotentWrite;
+		this.idempotencyService = idempotencyService;
 	}
 
 	/**
@@ -73,8 +79,10 @@ public class PauseController {
 	@PostMapping("/anchors/{anchorId}/pause")
 	public ResponseEntity<PauseResponse> pause(@PathVariable Long anchorId,
 			@RequestAttribute(IdempotencyFilter.IDEMPOTENCY_KEY_ATTRIBUTE) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "anchors.pause", Map.of("anchorId", anchorId),
-				HttpStatus.CREATED, PauseResponse.class, () -> pauseService.pause(anchorId));
+		IdempotentResponse<PauseResponse> response = idempotencyService.execute(idempotencyKey, "anchors.pause",
+				Map.of("anchorId", anchorId), HttpStatus.CREATED.value(), PauseResponse.class,
+				() -> pauseService.pause(anchorId));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**
@@ -95,8 +103,10 @@ public class PauseController {
 	@PostMapping("/pauses/{pauseId}/resume")
 	public ResponseEntity<PauseResponse> resume(@PathVariable Long pauseId,
 			@RequestAttribute(IdempotencyFilter.IDEMPOTENCY_KEY_ATTRIBUTE) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "pauses.resume", Map.of("pauseId", pauseId), HttpStatus.OK,
-				PauseResponse.class, () -> pauseService.resume(pauseId));
+		IdempotentResponse<PauseResponse> response = idempotencyService.execute(idempotencyKey, "pauses.resume",
+				Map.of("pauseId", pauseId), HttpStatus.OK.value(), PauseResponse.class,
+				() -> pauseService.resume(pauseId));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**
@@ -119,9 +129,10 @@ public class PauseController {
 	public ResponseEntity<PauseResponse> abort(@PathVariable Long pauseId,
 			@Valid @RequestBody PauseAbortRequest request,
 			@RequestAttribute(IdempotencyFilter.IDEMPOTENCY_KEY_ATTRIBUTE) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "pauses.abort", Map.of("pauseId", pauseId, "reason",
-				request.reason().wireValue()), HttpStatus.OK, PauseResponse.class,
-				() -> pauseService.abort(pauseId, request.reason()));
+		IdempotentResponse<PauseResponse> response = idempotencyService.execute(idempotencyKey, "pauses.abort",
+				Map.of("pauseId", pauseId, "reason", request.reason().wireValue()), HttpStatus.OK.value(),
+				PauseResponse.class, () -> pauseService.abort(pauseId, request.reason()));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**

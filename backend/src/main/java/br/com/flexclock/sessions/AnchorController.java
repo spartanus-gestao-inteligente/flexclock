@@ -16,7 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 import br.com.flexclock.common.ContractVersion;
 import br.com.flexclock.common.ErrorResponse;
 import br.com.flexclock.common.IdempotencyFilter;
-import br.com.flexclock.common.IdempotentWrite;
+import br.com.flexclock.common.IdempotencyService;
+import br.com.flexclock.common.IdempotentResponse;
 import br.com.flexclock.dto.AnchorRequest;
 import br.com.flexclock.dto.AnchorResponse;
 import br.com.flexclock.dto.AnchorSummary;
@@ -39,11 +40,11 @@ public class AnchorController {
 
 
 	private final AnchorService anchorService;
-	private final IdempotentWrite idempotentWrite;
+	private final IdempotencyService idempotencyService;
 
-	public AnchorController(AnchorService anchorService, IdempotentWrite idempotentWrite) {
+	public AnchorController(AnchorService anchorService, IdempotencyService idempotencyService) {
 		this.anchorService = anchorService;
-		this.idempotentWrite = idempotentWrite;
+		this.idempotencyService = idempotencyService;
 	}
 
 	/**
@@ -68,8 +69,9 @@ public class AnchorController {
 	@PostMapping
 	public ResponseEntity<AnchorResponse> create(@Valid @RequestBody AnchorRequest request,
 			@RequestHeader(name = IdempotencyFilter.IDEMPOTENCY_KEY_HEADER) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "anchors.create", request, HttpStatus.CREATED,
-				AnchorResponse.class, () -> anchorService.create(request));
+		IdempotentResponse<AnchorResponse> response = idempotencyService.execute(idempotencyKey, "anchors.create",
+				request, HttpStatus.CREATED.value(), AnchorResponse.class, () -> anchorService.create(request));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**
@@ -86,11 +88,12 @@ public class AnchorController {
 	@PostMapping("/{anchorId}/heartbeat")
 	public ResponseEntity<Void> heartbeat(@PathVariable Long anchorId,
 			@RequestHeader(name = IdempotencyFilter.IDEMPOTENCY_KEY_HEADER) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "anchors.heartbeat", anchorId, HttpStatus.NO_CONTENT,
-				Void.class, () -> {
+		IdempotentResponse<Void> response = idempotencyService.execute(idempotencyKey, "anchors.heartbeat", anchorId,
+				HttpStatus.NO_CONTENT.value(), Void.class, () -> {
 					anchorService.heartbeat(anchorId);
 					return null;
 				});
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**

@@ -8,6 +8,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeAll;
@@ -52,9 +53,24 @@ class TimeAndPauseMigrationTest {
 	@Test
 	void theMigrationAddsTheTimeAndPauseIndexes() throws SQLException {
 		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
-			assertThat(indexNames(statement)).contains("ix_work_session_procedure", "ix_work_session_started_at",
+			assertThat(indexNames(statement)).contains("ix_work_session_started_at",
 					"ux_work_session_open_procedure", "ix_agent_pause_procedure", "ix_agent_pause_session",
 					"ix_agent_pause_expiry", "ux_agent_pause_open_procedure");
+		}
+	}
+
+	@Test
+	void theSchemaKeepsOneIndexOnTheProcedureAndStartOfAWorkSession() throws SQLException {
+		try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+			List<String> names = indexNames(statement);
+
+			// V3 owns the index on (procedure_id, started_at). V4 repeated it under another name, and V6
+			// drops only that redundant copy (decision 0058 already froze V4, so the correction is a new
+			// migration).
+			assertThat(names).contains("idx_work_session_procedure_started");
+			assertThat(names).doesNotContain("ix_work_session_procedure");
+			assertThat(indexColumns(statement, "idx_work_session_procedure_started"))
+					.containsExactly("procedure_id", "started_at");
 		}
 	}
 
@@ -95,6 +111,16 @@ class TimeAndPauseMigrationTest {
 
 	private Connection connection() throws SQLException {
 		return DriverManager.getConnection(FlywayTestDatabase.url(DATABASE));
+	}
+
+	private java.util.List<String> indexColumns(Statement statement, String index) throws SQLException {
+		java.util.List<String> columns = new java.util.ArrayList<>();
+		try (var resultSet = statement.executeQuery("pragma index_info('%s')".formatted(index))) {
+			while (resultSet.next()) {
+				columns.add(resultSet.getString("name"));
+			}
+		}
+		return columns;
 	}
 
 	private java.util.List<String> indexNames(Statement statement) throws SQLException {

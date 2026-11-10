@@ -11,12 +11,14 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -40,6 +42,8 @@ import tools.jackson.databind.json.JsonMapper;
  * 0046 and the absence of a phantom pause.
  */
 class OpenCodeClientTest {
+
+	private static final String DIRECTION_TURN = "Ask the user whether to continue.";
 
 	private final SettingsService settingsService = mock(SettingsService.class);
 
@@ -135,29 +139,36 @@ class OpenCodeClientTest {
 
 	@Test
 	void theAbortIsRepeatedWhileTheServerAnswersATransientFailure() {
+		server.reply("GET", "/global/health", 200, "{\"healthy\":true}");
 		server.reply("POST", "/session/ses_main/abort", 500, "{}");
 		server.reply("POST", "/session/ses_main/abort", 503, "{}");
 		server.reply("POST", "/session/ses_main/abort", 200, "true");
+		server.reply("POST", "/session/ses_main/prompt_async", 200, "{}");
 
-		client.abort("ses_main");
+		OpenCodePauseResult result = client.pause("ses_main", "Ask the user whether to continue.");
 
+		assertThat(result.outcome()).isEqualTo(OpenCodePauseOutcome.PAUSED);
 		assertThat(server.count("POST /session/ses_main/abort")).isEqualTo(3);
 	}
 
 	@Test
 	void anAbortThatTheServerDoesNotConfirmIsAFailure() {
+		server.reply("GET", "/global/health", 200, "{\"healthy\":true}");
 		server.reply("POST", "/session/ses_main/abort", 200, "false");
 
-		assertThatThrownBy(() -> client.abort("ses_main")).isInstanceOf(ApiException.class)
-				.extracting(exception -> ((ApiException) exception).errorCode())
-				.isEqualTo(ErrorCode.PAUSE_FAILED);
+		OpenCodePauseResult result = client.pause("ses_main", "Ask the user whether to continue.");
+
+		assertThat(result.isPaused()).isFalse();
+		assertThat(result.abortApplied()).isFalse();
+		assertThat(result.outcome()).isEqualTo(OpenCodePauseOutcome.PAUSE_FAILED);
+		assertThat(server.count("POST /session/ses_main/prompt_async")).isZero();
 	}
 
 	@Test
 	void aPauseIsReportedOnlyWhenTheAbortAndTheDirectionTurnSucceeded() {
 		server.reply("GET", "/global/health", 200, "{\"healthy\":true,\"version\":\"1.0.7\"}");
 		server.reply("POST", "/session/ses_main/abort", 200, "true");
-		server.reply("POST", "/session/ses_main/message", 200, "{\"info\":{}}");
+		server.reply("POST", "/session/ses_main/prompt_async", 200, "{}");
 
 		OpenCodePauseResult result = client.pause("ses_main", "Ask the user whether to continue.");
 
@@ -165,6 +176,9 @@ class OpenCodeClientTest {
 		assertThat(result.abortApplied()).isTrue();
 		assertThat(result.directionTurnSent()).isTrue();
 		assertThat(result.isPaused()).isTrue();
+		// The turn is admitted asynchronously, so the pause never blocks on the open question.
+		assertThat(server.count("POST /session/ses_main/prompt_async")).isEqualTo(1);
+		assertThat(server.count("POST /session/ses_main/message")).isZero();
 	}
 
 	@Test
@@ -177,7 +191,7 @@ class OpenCodeClientTest {
 		assertThat(result.isPaused()).isFalse();
 		assertThat(result.outcome()).isEqualTo(OpenCodePauseOutcome.PAUSE_FAILED);
 		assertThat(result.abortApplied()).isFalse();
-		assertThat(server.count("POST /session/ses_main/message")).isZero();
+		assertThat(server.count("POST /session/ses_main/prompt_async")).isZero();
 	}
 
 	@Test
@@ -231,7 +245,7 @@ class OpenCodeClientTest {
 		server.reply("GET", "/global/health", 200, "{\"healthy\":true}");
 		server.reply("POST", "/session/ses_main/abort", 200, "true");
 		for (int attempt = 0; attempt < 3; attempt++) {
-			server.reply("POST", "/session/ses_main/message", 500, "{}");
+			server.reply("POST", "/session/ses_main/prompt_async", 500, "{}");
 		}
 
 		OpenCodePauseResult result = client.pause("ses_main", "Ask the user whether to continue.");
@@ -242,11 +256,13 @@ class OpenCodeClientTest {
 	}
 
 	@Test
-	void aDirectionTurnOutsideTheBoundIsRefused() {
-		assertThatThrownBy(() -> client.sendDirectionTurn("ses_main", "x".repeat(OpenCodeClient.MAX_DIRECTION_TURN_LENGTH + 1)))
+	void aDirectionTurnOutsideTheBoundIsRefusedBeforeAnyCall() {
+		assertThatThrownBy(() -> client.pause("ses_main",
+				"x".repeat(OpenCodeClient.MAX_DIRECTION_TURN_LENGTH + 1)))
 				.isInstanceOf(ApiException.class)
 				.extracting(exception -> ((ApiException) exception).errorCode())
 				.isEqualTo(ErrorCode.PAYLOAD_TOO_LARGE);
+		assertThat(server.requests()).isEmpty();
 	}
 
 	@Test
@@ -256,6 +272,68 @@ class OpenCodeClientTest {
 		assertThatThrownBy(client::health).isInstanceOf(ApiException.class)
 				.extracting(exception -> ((ApiException) exception).errorCode())
 				.isEqualTo(ErrorCode.OPENCODE_UNREACHABLE);
+	}
+
+	@Test
+	void everyCallResolvesTheEndpointFromTheSettingsSoTheChangeHitsTheSecondServer() throws IOException {
+		StubOpenCodeServer second = new StubOpenCodeServer();
+		try {
+			second.reply("GET", "/global/health", 200, "{\"healthy\":true}");
+			second.reply("POST", "/session/ses_main/abort", 200, "true");
+			second.reply("POST", "/session/ses_main/prompt_async", 200, "{}");
+			when(settingsService.effective(SettingKey.OPENCODE_ENDPOINT)).thenReturn(second.baseUrl());
+
+			OpenCodePauseResult result = client.pause("ses_main", "Ask the user whether to continue.");
+
+			assertThat(result.isPaused()).isTrue();
+			assertThat(second.requests()).containsExactly("GET /global/health",
+					"POST /session/ses_main/abort", "POST /session/ses_main/prompt_async");
+			assertThat(server.requests()).isEmpty();
+		}
+		finally {
+			second.close();
+		}
+	}
+
+	@Test
+	void theContinuationAnswerIsTheEarliestUserMessageAfterThePauseStart() {
+		Instant since = Instant.parse("2026-11-11T02:00:00Z");
+		server.reply("GET", "/session/ses_main/message", 200, messages(since));
+
+		Optional<Instant> answer = client.findContinuationAnswer("ses_main", since, DIRECTION_TURN);
+
+		assertThat(answer).contains(since.plusSeconds(30));
+	}
+
+	@Test
+	void aServerWithoutTheMessageEndpointYieldsNoAnswer() {
+		Instant since = Instant.parse("2026-11-11T02:00:00Z");
+		server.reply("GET", "/session/ses_main/message", 500, "{}");
+
+		assertThat(client.findContinuationAnswer("ses_main", since, DIRECTION_TURN)).isEmpty();
+	}
+
+	@Test
+	void aMalformedMessagePayloadYieldsNoAnswer() {
+		Instant since = Instant.parse("2026-11-11T02:00:00Z");
+		server.reply("GET", "/session/ses_main/message", 200, "<html>not a message list</html>");
+
+		assertThat(client.findContinuationAnswer("ses_main", since, DIRECTION_TURN)).isEmpty();
+	}
+
+	private String messages(Instant since) {
+		String directionTurn = JsonMapper.builder().build().writeValueAsString(DIRECTION_TURN);
+		return """
+				[
+				  {"info":{"role":"user","time":{"created":%d}},"parts":[{"type":"text","text":"older question"}]},
+				  {"info":{"role":"assistant","time":{"created":%d}},"parts":[{"type":"text","text":"working"}]},
+				  {"info":{"role":"user","time":{"created":%d}},"parts":[{"type":"text","text":%s}]},
+				  {"info":{"role":"user","time":{"created":%d}},"parts":[{"type":"text","text":"SIM"}]},
+				  {"info":{"role":"user","time":{"created":%d}},"parts":[{"type":"text","text":"SIM, continue"}]}
+				]
+				""".formatted(since.minusSeconds(10).toEpochMilli(), since.plusSeconds(5).toEpochMilli(),
+				since.plusSeconds(20).toEpochMilli(), directionTurn, since.plusSeconds(30).toEpochMilli(),
+				since.plusSeconds(40).toEpochMilli());
 	}
 
 	private OpenCodeClient newClient(String endpoint) {

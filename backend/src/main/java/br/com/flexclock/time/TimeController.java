@@ -17,7 +17,12 @@ import org.springframework.web.bind.annotation.RestController;
 import br.com.flexclock.common.ContractVersion;
 import br.com.flexclock.common.ErrorResponse;
 import br.com.flexclock.common.IdempotencyFilter;
-import br.com.flexclock.common.IdempotentWrite;
+import br.com.flexclock.common.IdempotencyService;
+import br.com.flexclock.common.IdempotentResponse;
+import br.com.flexclock.dto.ClockState;
+import br.com.flexclock.dto.WorkSessionRequest;
+import br.com.flexclock.dto.WorkSessionResponse;
+import br.com.flexclock.dto.WorkSessionResult;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -40,11 +45,11 @@ import jakarta.validation.Valid;
 public class TimeController {
 
 	private final WorkSessionService workSessionService;
-	private final IdempotentWrite idempotentWrite;
+	private final IdempotencyService idempotencyService;
 
-	public TimeController(WorkSessionService workSessionService, IdempotentWrite idempotentWrite) {
+	public TimeController(WorkSessionService workSessionService, IdempotencyService idempotencyService) {
 		this.workSessionService = workSessionService;
-		this.idempotentWrite = idempotentWrite;
+		this.idempotencyService = idempotencyService;
 	}
 
 	/**
@@ -68,8 +73,10 @@ public class TimeController {
 	@PostMapping("/work-sessions")
 	public ResponseEntity<WorkSessionResponse> start(@Valid @RequestBody WorkSessionRequest request,
 			@RequestAttribute(IdempotencyFilter.IDEMPOTENCY_KEY_ATTRIBUTE) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "work-sessions.start", request, HttpStatus.CREATED,
-				WorkSessionResponse.class, () -> workSessionService.start(request));
+		IdempotentResponse<WorkSessionResponse> response = idempotencyService.execute(idempotencyKey,
+				"work-sessions.start", request, HttpStatus.CREATED.value(), WorkSessionResponse.class,
+				() -> workSessionService.start(request));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**
@@ -90,8 +97,10 @@ public class TimeController {
 	@PostMapping("/work-sessions/{workSessionId}/stop")
 	public ResponseEntity<WorkSessionResult> stop(@PathVariable Long workSessionId,
 			@RequestAttribute(IdempotencyFilter.IDEMPOTENCY_KEY_ATTRIBUTE) String idempotencyKey) {
-		return idempotentWrite.execute(idempotencyKey, "work-sessions.stop", Map.of("workSessionId", workSessionId),
-				HttpStatus.OK, WorkSessionResult.class, () -> workSessionService.stop(workSessionId));
+		IdempotentResponse<WorkSessionResult> response = idempotencyService.execute(idempotencyKey,
+				"work-sessions.stop", Map.of("workSessionId", workSessionId), HttpStatus.OK.value(),
+				WorkSessionResult.class, () -> workSessionService.stop(workSessionId));
+		return ResponseEntity.status(response.status()).body(response.body());
 	}
 
 	/**

@@ -20,21 +20,31 @@ import org.springframework.transaction.annotation.Transactional;
 
 import br.com.flexclock.common.ApiException;
 import br.com.flexclock.common.ErrorCode;
+import br.com.flexclock.dto.PauseHistoryItem;
+import br.com.flexclock.dto.PauseNotification;
+import br.com.flexclock.dto.PauseResponse;
+import br.com.flexclock.dto.PauseStateResponse;
 import br.com.flexclock.enums.PauseReason;
 import br.com.flexclock.enums.PauseStatus;
 import br.com.flexclock.model.AgentPause;
+import br.com.flexclock.opencode.OpenCodePauseOutcome;
+import br.com.flexclock.opencode.OpenCodePauseResult;
+import br.com.flexclock.opencode.OpenCodePort;
 
 /**
  * Pause flow of a procedure.
  *
  * <p>A pause is always bound to the session of the requesting window anchor; the client never chooses
- * the session (requirement RF-041). Before applying a pause the flow checks the anchor, the anchor
- * freshness, the health of the OpenCode server and the existence of the session, and refuses with the
- * specific stable code when any check fails, without writing a record (requirements RF-032, RF-033).
+ * the session (requirement RF-041). Before applying a pause the flow checks the anchor and the anchor
+ * freshness, and the OpenCode transport then checks the server health, aborts the running session and
+ * admits the direction turn. The flow refuses with the specific stable code when any check fails,
+ * without writing a record (requirements RF-032, RF-033).
  *
- * <p>Applying the pause aborts the running session and sends exactly one short direction turn. The
- * pause row is written only after the abort succeeded; when the direction turn then fails, that row is
- * marked aborted with the reason pause_failed, so no ghost pause survives (requirements RF-034, RF-042).
+ * <p>The pause row is written only after the transport confirmed the abort; when the direction turn
+ * then failed, that row is marked aborted with the reason pause_failed, so no ghost pause survives
+ * (requirements RF-034, RF-042). Every call resolves the OpenCode endpoint from the settings table, so
+ * there is a single transport and a pause can never target a server different from the one the session
+ * listing came from (decision 0046).
  *
  * <p>The 60 minute limit is computed locally from the pause start. Expiry marks the record and
  * publishes the notification contract, and a resume is always an explicit transition (decision 0035;
@@ -53,16 +63,28 @@ public class PauseService {
 	/** Largest accepted history bound. */
 	static final int MAX_HISTORY_LIMIT = 200;
 
+	/**
+	 * The single direction turn of a pause.
+	 *
+	 * <p>The question itself is the one fixed by decision 0034 and it is shown to the owner in the
+	 * OpenCode chat, so it stays in Portuguese; the instruction around it and every identifier of the
+	 * backend stay in English.
+	 */
+	static final String DIRECTION_PROMPT = """
+			The pause was applied. Before continuing, verify the current procedure state and call the \
+			native question tool with the question "Deseja continuar o procedimento?" and the SIM option. \
+			Do not perform any other action before the answer.""".strip();
+
 	private final PauseRecorder recorder;
 	private final AgentPauseRepository pauses;
 	private final PauseLookup lookup;
-	private final OpenCodePauseClient openCode;
+	private final OpenCodePort openCode;
 	private final Clock clock;
 	private final Duration timeout;
 	private final Duration notificationRepeat;
 
 	public PauseService(PauseRecorder recorder, AgentPauseRepository pauses, PauseLookup lookup,
-			OpenCodePauseClient openCode, Clock clock, @Value("${flexclock.pause.timeout:60m}") Duration timeout,
+			OpenCodePort openCode, Clock clock, @Value("${flexclock.pause.timeout:60m}") Duration timeout,
 			@Value("${flexclock.pause.notification-repeat:15m}") Duration notificationRepeat) {
 		this.recorder = recorder;
 		this.pauses = pauses;
@@ -91,15 +113,12 @@ public class PauseService {
 					"The procedure already has an open pause.");
 		}
 
-		openCode.requireHealthy();
-		if (!openCode.sessionExists(anchor.sessionId())) {
-			throw new ApiException(ErrorCode.SESSION_GONE, "sessionId",
-					"The OpenCode session no longer exists.");
+		OpenCodePauseResult attempt = openCode.pause(anchor.sessionId(), DIRECTION_PROMPT);
+		if (!attempt.abortApplied()) {
+			throw refusal(attempt);
 		}
 
-		openCode.abort(anchor.sessionId());
 		Instant pauseStart = clock.instant();
-
 		AgentPause pause;
 		try {
 			pause = recorder.open(anchor.procedureId(), anchor.sessionId(), pauseStart);
@@ -109,15 +128,12 @@ public class PauseService {
 					"The procedure already has an open pause.");
 		}
 
-		try {
-			openCode.sendDirectionTurn(anchor.sessionId());
-		}
-		catch (RuntimeException exception) {
-			PauseReason reason = exception instanceof ApiException apiException
-					&& apiException.errorCode() == ErrorCode.SESSION_GONE ? PauseReason.SESSION_GONE
-							: PauseReason.PAUSE_FAILED;
+		if (!attempt.directionTurnSent()) {
+			PauseReason reason = attempt.outcome() == OpenCodePauseOutcome.SESSION_GONE
+					? PauseReason.SESSION_GONE
+					: PauseReason.PAUSE_FAILED;
 			recorder.abort(pause.getId(), reason, clock.instant());
-			throw exception;
+			throw refusal(attempt);
 		}
 		return new PauseResponse(pause.getStatus(), pause.getPauseStart());
 	}
@@ -241,7 +257,7 @@ public class PauseService {
 	 * @return the instant of the answer, empty when there is none
 	 */
 	Optional<Instant> continuationAnswer(AgentPause pause) {
-		return openCode.findContinuationAnswer(pause.getSessionId(), pause.getPauseStart());
+		return openCode.findContinuationAnswer(pause.getSessionId(), pause.getPauseStart(), DIRECTION_PROMPT);
 	}
 
 	/**
@@ -252,6 +268,14 @@ public class PauseService {
 	@Transactional(readOnly = true)
 	public List<AgentPause> openPauses() {
 		return pauses.findByStatusIn(OPEN);
+	}
+
+	private ApiException refusal(OpenCodePauseResult attempt) {
+		ErrorCode code = attempt.outcome().errorCode();
+		String detail = attempt.detail() == null || attempt.detail().isBlank()
+				? "The OpenCode server refused the pause."
+				: attempt.detail();
+		return new ApiException(code == null ? ErrorCode.PAUSE_FAILED : code, "opencode", detail);
 	}
 
 	private PauseStateResponse stateOf(AgentPause pause, Instant now) {

@@ -114,9 +114,10 @@ class FlywayPhase0BaselineTest {
 		Path migratedDatabase = FlywayTestDatabase.reset(DIRECTORY.resolve("migrated-from-empty.db"));
 		Flyway flyway = FlywayTestDatabase.flyway(migratedDatabase, "1");
 
-		// V1 is applied on the empty database and every forward migration follows it, so the assertion
-		// only fixes that at least the baseline ran and that nothing is left pending.
-		assertThat(flyway.migrate().migrationsExecuted).isGreaterThanOrEqualTo(1);
+		// The instance is pinned to target 1, so this call applies the baseline and nothing else: it fixes
+		// that V1 runs on an empty database and that nothing up to the target is left pending. The forward
+		// migrations are proven applied by the other test of this class.
+		assertThat(flyway.migrate().migrationsExecuted).isEqualTo(1);
 		assertThat(flyway.info().pending()).isEmpty();
 
 		// The Phase 0 reference is rebuilt from the captured script, because the live fixture database

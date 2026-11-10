@@ -25,7 +25,7 @@ import br.com.flexclock.common.ErrorCode;
 import br.com.flexclock.dto.AnchorRequest;
 import br.com.flexclock.dto.AnchorResponse;
 import br.com.flexclock.dto.AnchorSummary;
-import br.com.flexclock.time.ClockState;
+import br.com.flexclock.dto.ClockState;
 import br.com.flexclock.enums.AnchorStatus;
 import br.com.flexclock.enums.PauseStatus;
 import br.com.flexclock.enums.ProcedureStatus;

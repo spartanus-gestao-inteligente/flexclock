@@ -9,6 +9,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import br.com.flexclock.dto.TimeSegment;
 import br.com.flexclock.enums.PauseReason;
 import br.com.flexclock.enums.PauseStatus;
 import br.com.flexclock.enums.TimeMode;

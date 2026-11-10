@@ -1,4 +1,4 @@
-package br.com.flexclock.time;
+package br.com.flexclock.dto;
 
 import java.time.Instant;
 import java.util.List;

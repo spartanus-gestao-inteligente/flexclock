@@ -1,7 +1,8 @@
 package br.com.flexclock.pause;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.doThrow;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -30,11 +31,16 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 
-import br.com.flexclock.common.ApiException;
-import br.com.flexclock.common.ErrorCode;
 import br.com.flexclock.common.InstanceDescriptor;
+import br.com.flexclock.dto.PauseHistoryItem;
+import br.com.flexclock.dto.PauseNotification;
+import br.com.flexclock.dto.PauseResponse;
+import br.com.flexclock.dto.PauseStateResponse;
 import br.com.flexclock.enums.PauseReason;
 import br.com.flexclock.enums.PauseStatus;
+import br.com.flexclock.opencode.OpenCodePauseOutcome;
+import br.com.flexclock.opencode.OpenCodePauseResult;
+import br.com.flexclock.opencode.OpenCodePort;
 import br.com.flexclock.support.MutableClock;
 import br.com.flexclock.support.SqliteIntegrationTest;
 import tools.jackson.databind.ObjectMapper;
@@ -42,11 +48,12 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Proves the pause flow over the real filters, the real SQLite file and a controllable clock.
  *
- * <p>The OpenCode server is replaced by a mock, because the flow must be proven without a live agent:
- * the health classification, the abort, the single direction turn and the continuation detection are
- * boundaries. The tests cover the applied pause, the refusals without a ghost record, the failure of
- * the direction turn, the resume, the 60 minute expiry, the notification contract, the abort reasons,
- * the history and the idempotency (decisions 0034, 0035, 0044, 0045; requirements RF-032 to RF-042).
+ * <p>The OpenCode transport is replaced by a mock, because the flow must be proven without a live
+ * agent: the health classification, the abort and the single direction turn are the boundary the
+ * transport owns, and the transport contract itself is proven by the client test. The tests cover the
+ * applied pause, the refusals without a ghost record, the failure of the direction turn, the resume,
+ * the 60 minute expiry, the notification contract, the abort reasons, the history and the idempotency
+ * (decisions 0034, 0035, 0044, 0045; requirements RF-032 to RF-042).
  */
 @SpringBootTest(properties = { "flexclock.pause.continuation-poll-enabled=false",
 		"flexclock.pause.expiry-check-initial-delay=1h" })
@@ -84,7 +91,7 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 	private PauseService pauseService;
 
 	@MockitoBean
-	private OpenCodePauseClient openCode;
+	private OpenCodePort openCode;
 
 	@BeforeEach
 	void resetState() {
@@ -94,7 +101,7 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 		jdbcTemplate.update("delete from procedure");
 		jdbcTemplate.update("delete from agent_anchor");
 		insertAnchorAndProcedure(ANCHOR_ID, SESSION);
-		when(openCode.sessionExists(SESSION)).thenReturn(true);
+		when(openCode.pause(eq(SESSION), anyString())).thenReturn(paused());
 	}
 
 	@Test
@@ -119,8 +126,8 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 
 	@Test
 	void aPauseWithoutAHealthyServerIsRefusedAndWritesNoRecord() throws Exception {
-		doThrow(new ApiException(ErrorCode.OPENCODE_UNREACHABLE, "opencode", "down")).when(openCode)
-				.requireHealthy();
+		when(openCode.pause(eq(SESSION), anyString()))
+				.thenReturn(refused(OpenCodePauseOutcome.SERVER_DOWN, false, false));
 
 		mockMvc.perform(write(HttpMethod.POST, "/anchors/" + ANCHOR_ID + "/pause", newKey()))
 				.andExpect(status().isServiceUnavailable())
@@ -131,7 +138,8 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 
 	@Test
 	void aPauseWhenAnotherProcessHoldsThePortIsRefused() throws Exception {
-		doThrow(new ApiException(ErrorCode.PORT_BUSY, "opencode", "busy")).when(openCode).requireHealthy();
+		when(openCode.pause(eq(SESSION), anyString()))
+				.thenReturn(refused(OpenCodePauseOutcome.PORT_BUSY, false, false));
 
 		mockMvc.perform(write(HttpMethod.POST, "/anchors/" + ANCHOR_ID + "/pause", newKey()))
 				.andExpect(status().isServiceUnavailable())
@@ -142,7 +150,8 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 
 	@Test
 	void aPauseWhenTheSessionDisappearedIsRefused() throws Exception {
-		when(openCode.sessionExists(SESSION)).thenReturn(false);
+		when(openCode.pause(eq(SESSION), anyString()))
+				.thenReturn(refused(OpenCodePauseOutcome.SESSION_GONE, false, false));
 
 		mockMvc.perform(write(HttpMethod.POST, "/anchors/" + ANCHOR_ID + "/pause", newKey()))
 				.andExpect(status().isNotFound())
@@ -153,8 +162,8 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 
 	@Test
 	void aPauseWhoseDirectionTurnFailsIsRecordedAsAborted() throws Exception {
-		doThrow(new ApiException(ErrorCode.PAUSE_FAILED, "opencode", "refused")).when(openCode)
-				.sendDirectionTurn(SESSION);
+		when(openCode.pause(eq(SESSION), anyString()))
+				.thenReturn(refused(OpenCodePauseOutcome.PAUSE_FAILED, true, false));
 
 		mockMvc.perform(write(HttpMethod.POST, "/anchors/" + ANCHOR_ID + "/pause", newKey()))
 				.andExpect(status().isBadGateway())
@@ -339,7 +348,7 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 	@Test
 	void theSameKeyWithADifferentAnchorIsRefused() throws Exception {
 		insertAnchorAndProcedure(9102L, "ses_pause_two");
-		when(openCode.sessionExists("ses_pause_two")).thenReturn(true);
+		when(openCode.pause(eq("ses_pause_two"), anyString())).thenReturn(paused());
 		String key = newKey();
 		pause(ANCHOR_ID, key);
 
@@ -461,6 +470,16 @@ class PauseFlowEndpointTest extends SqliteIntegrationTest {
 
 	private String newKey() {
 		return UUID.randomUUID().toString();
+	}
+
+	private OpenCodePauseResult paused() {
+		return new OpenCodePauseResult(OpenCodePauseOutcome.PAUSED, true, true, 2, null);
+	}
+
+	private OpenCodePauseResult refused(OpenCodePauseOutcome outcome, boolean abortApplied,
+			boolean directionTurnSent) {
+		return new OpenCodePauseResult(outcome, abortApplied, directionTurnSent, 3,
+				"The OpenCode server refused the pause call.");
 	}
 
 	@TestConfiguration(proxyBeanMethods = false)

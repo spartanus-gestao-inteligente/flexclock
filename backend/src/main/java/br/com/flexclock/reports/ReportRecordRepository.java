@@ -10,6 +10,9 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
+import br.com.flexclock.common.ApiException;
+import br.com.flexclock.common.ErrorCode;
+
 /**
  * Write access to the report tables: insertion only, through explicit SQL.
  *
@@ -200,15 +203,33 @@ public class ReportRecordRepository {
 	 * Finds the identifier of a record by its Idempotency-Key.
 	 *
 	 * <p>Used only to answer a repeated write with the original result after a unique violation, never
-	 * to modify a record.
+	 * to modify a record. The table comes from the closed family mapping, so no caller can hand a raw
+	 * table name to the statement.
 	 *
-	 * @param table the table sealed by the contract
+	 * @param family the report family that owns the record
 	 * @param idempotencyKey the key presented by the client
 	 * @return the identifier when the key is already recorded
+	 * @throws br.com.flexclock.common.ApiException with {@code VALIDATION_ERROR} for the time family,
+	 * which owns no append only table
 	 */
-	public Optional<Long> findIdByIdempotencyKey(String table, String idempotencyKey) {
-		return jdbcTemplate.queryForList("select id from " + table + " where idempotency_key = ?", Long.class,
-				idempotencyKey).stream().findFirst();
+	public Optional<Long> findIdByIdempotencyKey(ReportFamily family, String idempotencyKey) {
+		return jdbcTemplate.queryForList("select id from " + tableOf(family) + " where idempotency_key = ?",
+				Long.class, idempotencyKey).stream().findFirst();
+	}
+
+	private String tableOf(ReportFamily family) {
+		return switch (family) {
+			case FAILURES -> "failure_event";
+			case HALLUCINATION -> "hallucination_event";
+			case QUALITY -> "quality_evaluation";
+			case GRAPH_USAGE -> "graph_usage_event";
+			case TOKEN_ECONOMY -> "token_economy_event";
+			case SOURCES -> "source_event";
+			case DOWNLOADS -> "download_event";
+			case UPLOADS -> "upload_event";
+			case TIME -> throw new ApiException(ErrorCode.VALIDATION_ERROR, "family",
+					"The time family is derived from the work sessions and has no append only table.");
+		};
 	}
 
 	private Long insert(String sql, Object... arguments) {

@@ -14,6 +14,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import br.com.flexclock.common.ApiException;
 import br.com.flexclock.common.ErrorCode;
+import br.com.flexclock.dto.ClockState;
+import br.com.flexclock.dto.WorkSessionRequest;
+import br.com.flexclock.dto.WorkSessionResponse;
+import br.com.flexclock.dto.WorkSessionResult;
 import br.com.flexclock.enums.TimeMode;
 import br.com.flexclock.model.AgentPause;
 import br.com.flexclock.model.WorkSession;

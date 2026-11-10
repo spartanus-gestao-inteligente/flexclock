@@ -1,6 +1,8 @@
 package br.com.flexclock.opencode;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Port of the local OpenCode server, owned by the backend.
@@ -9,6 +11,10 @@ import java.util.List;
  * the MCP sidecar, the event service and the agent never call the server, and no component accepts a
  * session identifier from a client as authority: the identifier is always resolved from the anchor
  * before an operation runs (decision 0043; requirements RF-012, RF-153).
+ *
+ * <p>This is the single transport of the product. Every operation resolves the endpoint from the
+ * settings table on every call, so a change of the setting takes effect without a restart and no
+ * second client can target a different server (decision 0046, requirement RF-009).
  *
  * <p>Guarantees of every implementation:
  *
@@ -70,28 +76,6 @@ public interface OpenCodePort {
 	OpenCodeSession getSession(String sessionId);
 
 	/**
-	 * Aborts a running session.
-	 *
-	 * <p>The abort is the pause signal of decision 0034. A confirmation from the server is required: an
-	 * implementation never reports success on a refusal.
-	 *
-	 * @param sessionId the session identifier resolved from the anchor
-	 */
-	void abort(String sessionId);
-
-	/**
-	 * Sends one direction turn to a session.
-	 *
-	 * <p>The text is supplied by the pause workstream, because it is the instruction that makes the
-	 * agent ask the user. The client only guarantees the transport, the bound on the text and the
-	 * retry.
-	 *
-	 * @param sessionId the session identifier resolved from the anchor
-	 * @param directionTurnText the instruction to deliver
-	 */
-	void sendDirectionTurn(String sessionId, String directionTurnText);
-
-	/**
 	 * Applies a pause: health check, abort and direction turn.
 	 *
 	 * <p>It never produces a phantom pause. The outcome is {@link OpenCodePauseOutcome#PAUSED} only when
@@ -101,9 +85,30 @@ public interface OpenCodePort {
 	 * guessing. It writes nothing: persisting the pause belongs to the pause workstream (decision 0034
 	 * and 0046; requirement RF-155).
 	 *
+	 * <p>The direction turn is admitted asynchronously, because the synchronous message endpoint
+	 * answers only when the agent turn ends and the turn ends only when the question is answered; the
+	 * pause endpoint must never block on the open question (decision 0034).
+	 *
 	 * @param sessionId the session identifier resolved from the anchor
 	 * @param directionTurnText the instruction to deliver after the abort
 	 * @return the facts of the attempt
 	 */
 	OpenCodePauseResult pause(String sessionId, String directionTurnText);
+
+	/**
+	 * Looks for the continuation answer of a paused session.
+	 *
+	 * <p>This is the polling fallback allowed by decision 0034: the messages of the session are read and
+	 * a user message created after the pause start, other than the direction turn itself, is treated as
+	 * the answer that resumes the procedure. The detector is a heuristic over the documented message
+	 * shape; it never sends anything and it never resumes by itself, it only reports the instant it saw.
+	 * A server that cannot be read yields an empty answer instead of an error, because the detector
+	 * runs on a timer and a pause stays resolvable by a later poll.
+	 *
+	 * @param sessionId the session identifier resolved from the anchor
+	 * @param since the pause start instant
+	 * @param directionTurnText the instruction the pause sent, excluded from the answers
+	 * @return the instant of the continuation answer, empty when there is none or the server is down
+	 */
+	Optional<Instant> findContinuationAnswer(String sessionId, Instant since, String directionTurnText);
 }

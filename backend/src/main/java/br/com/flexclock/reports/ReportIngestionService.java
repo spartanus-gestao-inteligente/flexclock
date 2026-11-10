@@ -1,24 +1,17 @@
 package br.com.flexclock.reports;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import br.com.flexclock.common.ApiException;
 import br.com.flexclock.common.ErrorCode;
-import br.com.flexclock.common.IdempotencyRecord;
-import br.com.flexclock.common.IdempotencyStore;
+import br.com.flexclock.common.IdempotencyService;
 import br.com.flexclock.dto.ReportRecordRequest;
 import br.com.flexclock.dto.ReportRecordResponse;
 import br.com.flexclock.enums.EvaluationAuthority;
@@ -45,7 +38,9 @@ import br.com.flexclock.reports.ReportRecordRepository.UploadRow;
  * <p>The ingestion path offers creation only: there is no update, no delete and no batch operation that
  * rewrites an existing record. Validation refuses a value outside the closed domain before anything is
  * written, secrets are removed from every free text and URL field before the record is persisted, and a
- * repeated Idempotency-Key returns the original result instead of inserting a second record.
+ * repeated Idempotency-Key returns the original result instead of inserting a second record. The whole
+ * write goes through the single idempotency engine, and its replay record is stored only after this
+ * transaction commits, so a failed write leaves nothing replayable behind.
  *
  * <p>An error record is a failure record whose type is {@code errors}; its details are written as an
  * immutable row of the error detail table, linked by foreign key, so the failures report can read them.
@@ -59,15 +54,17 @@ public class ReportIngestionService {
 
 	private static final WriteSource REST_WRITE_SOURCE = WriteSource.REST;
 
+	private static final int CREATED_STATUS = 201;
+
 	private final ReportRecordRepository repository;
 	private final RedactionComponent redactionComponent;
-	private final IdempotencyStore idempotencyStore;
+	private final IdempotencyService idempotencyService;
 
 	public ReportIngestionService(ReportRecordRepository repository, RedactionComponent redactionComponent,
-			IdempotencyStore idempotencyStore) {
+			IdempotencyService idempotencyService) {
 		this.repository = repository;
 		this.redactionComponent = redactionComponent;
-		this.idempotencyStore = idempotencyStore;
+		this.idempotencyService = idempotencyService;
 	}
 
 	/**
@@ -85,48 +82,47 @@ public class ReportIngestionService {
 					"The time family is derived from the work sessions and cannot accept an appended record.");
 		}
 		requireKey(idempotencyKey);
+		requireCommon(request);
+		return idempotencyService.execute(idempotencyKey, "reports." + family.wireName(), request,
+				CREATED_STATUS, ReportRecordResponse.class,
+				() -> appendGuarded(family, request, idempotencyKey)).body();
+	}
 
-		String fingerprint = fingerprint(request);
-		Optional<IdempotencyRecord> previous = idempotencyStore.find(idempotencyKey);
-		if (previous.isPresent()) {
-			if (!previous.get().requestFingerprint().equals(fingerprint)) {
-				throw new ApiException(ErrorCode.IDEMPOTENCY_CONFLICT, "Idempotency-Key",
-						"The Idempotency-Key was already used with a different payload.");
-			}
-			// The key is already recorded in this process: answer with the identifier of the original
-			// record, read from the table, so a retried write returns the same result and inserts nothing.
-			Long recordedId = repository.findIdByIdempotencyKey(tableOf(family), idempotencyKey).orElse(null);
-			return new ReportRecordResponse(family, recordedId, request.recordType(), request.occurredAt(), false);
-		}
+	/**
+	 * Appends the record unless the key is already recorded by an earlier process.
+	 *
+	 * <p>The unique index on the Idempotency-Key is the durable guard. A key committed before this run,
+	 * whose in memory record is gone, answers with the original row instead of duplicating the effect.
+	 * The lookup runs before the first insert and inside the write transaction, so a row inserted by
+	 * this same write can never be mistaken for a record of an earlier process, and a write that fails
+	 * later rolls back without leaving anything replayable behind.
+	 *
+	 * @param family the family of the path
+	 * @param request the record to append
+	 * @param idempotencyKey the key presented by the client
+	 * @return the original row for an earlier key, the appended row otherwise
+	 */
+	private ReportRecordResponse appendGuarded(ReportFamily family, ReportRecordRequest request,
+			String idempotencyKey) {
+		return repository.findIdByIdempotencyKey(family, idempotencyKey)
+				.map(recordedId -> new ReportRecordResponse(family, recordedId, request.recordType(),
+						request.occurredAt(), false))
+				.orElseGet(() -> appendOnce(family, request, idempotencyKey));
+	}
 
-		ReportRecordResponse response;
-		try {
-			response = switch (family) {
-				case FAILURES -> appendFailure(request, idempotencyKey);
-				case HALLUCINATION -> appendHallucination(request, idempotencyKey);
-				case QUALITY -> appendQuality(request, idempotencyKey);
-				case GRAPH_USAGE -> appendGraphUsage(request, idempotencyKey);
-				case TOKEN_ECONOMY -> appendTokenEconomy(request, idempotencyKey);
-				case SOURCES -> appendSource(request, idempotencyKey);
-				case DOWNLOADS -> appendDownload(request, idempotencyKey);
-				case UPLOADS -> appendUpload(request, idempotencyKey);
-				case TIME -> throw new ApiException(ErrorCode.VALIDATION_ERROR, "family",
-						"The time family is derived from the work sessions and cannot accept an appended record.");
-			};
-		}
-		catch (DataIntegrityViolationException exception) {
-			// The unique index on the Idempotency-Key is the durable guard: a key already recorded by an
-			// earlier process answers with the original record instead of duplicating the effect.
-			Optional<Long> existing = repository.findIdByIdempotencyKey(tableOf(family), idempotencyKey);
-			if (existing.isEmpty()) {
-				throw exception;
-			}
-			response = new ReportRecordResponse(family, existing.get(), request.recordType(), request.occurredAt(),
-					false);
-		}
-
-		idempotencyStore.save(new IdempotencyRecord(idempotencyKey, fingerprint, 201, "", Instant.now()));
-		return response;
+	private ReportRecordResponse appendOnce(ReportFamily family, ReportRecordRequest request, String idempotencyKey) {
+		return switch (family) {
+			case FAILURES -> appendFailure(request, idempotencyKey);
+			case HALLUCINATION -> appendHallucination(request, idempotencyKey);
+			case QUALITY -> appendQuality(request, idempotencyKey);
+			case GRAPH_USAGE -> appendGraphUsage(request, idempotencyKey);
+			case TOKEN_ECONOMY -> appendTokenEconomy(request, idempotencyKey);
+			case SOURCES -> appendSource(request, idempotencyKey);
+			case DOWNLOADS -> appendDownload(request, idempotencyKey);
+			case UPLOADS -> appendUpload(request, idempotencyKey);
+			case TIME -> throw new ApiException(ErrorCode.VALIDATION_ERROR, "family",
+					"The time family is derived from the work sessions and cannot accept an appended record.");
+		};
 	}
 
 	private ReportRecordResponse appendFailure(ReportRecordRequest request, String idempotencyKey) {
@@ -301,21 +297,6 @@ public class ReportIngestionService {
 				wasRedacted);
 	}
 
-	private String tableOf(ReportFamily family) {
-		return switch (family) {
-			case FAILURES -> "failure_event";
-			case HALLUCINATION -> "hallucination_event";
-			case QUALITY -> "quality_evaluation";
-			case GRAPH_USAGE -> "graph_usage_event";
-			case TOKEN_ECONOMY -> "token_economy_event";
-			case SOURCES -> "source_event";
-			case DOWNLOADS -> "download_event";
-			case UPLOADS -> "upload_event";
-			case TIME -> throw new ApiException(ErrorCode.VALIDATION_ERROR, "family",
-					"The time family is derived from the work sessions and cannot accept an appended record.");
-		};
-	}
-
 	private void requireCommon(ReportRecordRequest request) {
 		if (request == null) {
 			throw new ApiException(ErrorCode.VALIDATION_ERROR, null, "The record is missing.");
@@ -375,67 +356,6 @@ public class ReportIngestionService {
 
 	private String trimToNull(String value) {
 		return value == null || value.isBlank() ? null : value.trim();
-	}
-
-	private String fingerprint(ReportRecordRequest request) {
-		StringBuilder canonical = new StringBuilder();
-		append(canonical, request.recordType());
-		append(canonical, request.failureType());
-		append(canonical, request.severity());
-		append(canonical, request.occurredAt());
-		append(canonical, request.agentId());
-		append(canonical, request.procedureId());
-		append(canonical, request.sessionId());
-		append(canonical, request.source());
-		append(canonical, request.origin());
-		append(canonical, request.taskContext());
-		append(canonical, request.purpose());
-		append(canonical, request.result());
-		append(canonical, request.cited());
-		append(canonical, request.sent());
-		append(canonical, request.redacted());
-		append(canonical, request.sizeBytes());
-		append(canonical, request.destination());
-		append(canonical, request.item());
-		append(canonical, request.itemType());
-		append(canonical, request.score());
-		append(canonical, request.adherenceLevel());
-		append(canonical, request.evidenceLevel());
-		append(canonical, request.processLevel());
-		append(canonical, request.artifactLevel());
-		append(canonical, request.honestyLevel());
-		append(canonical, request.rationale());
-		append(canonical, request.authority());
-		append(canonical, request.queryCount());
-		append(canonical, request.distinctNodes());
-		append(canonical, request.consultedBeforeWork());
-		append(canonical, request.inputTokens());
-		append(canonical, request.outputTokens());
-		append(canonical, request.baselineInputTokens());
-		append(canonical, request.baselineOutputTokens());
-		append(canonical, request.savingsTokens());
-		append(canonical, request.measurable());
-		append(canonical, request.notMeasurableReason());
-		append(canonical, request.modelId());
-		append(canonical, request.responseRef());
-		append(canonical, request.code());
-		append(canonical, request.message());
-		append(canonical, request.fieldOrResource());
-		return sha256(canonical.toString());
-	}
-
-	private void append(StringBuilder builder, Object value) {
-		builder.append(value == null ? "" : value.toString()).append('\u001f');
-	}
-
-	private String sha256(String value) {
-		try {
-			MessageDigest digest = MessageDigest.getInstance("SHA-256");
-			return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-		}
-		catch (NoSuchAlgorithmException exception) {
-			throw new IllegalStateException("SHA-256 is not available in this runtime.", exception);
-		}
 	}
 
 	/**
