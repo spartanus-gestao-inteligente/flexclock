@@ -1,0 +1,28 @@
+# Build and IDE artifacts
+**/target/
+**/build/
+**/.dart_tool/
+**/.idea/
+**/.settings/
+**/.classpath
+**/.project
+**/.factorypath
+**/*.iml
+**/.vscode/
+**/.DS_Store
+
+# Local data and runtime state
+**/data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Python virtual environments and caches
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
