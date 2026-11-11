@@ -40,7 +40,10 @@ import br.com.flexclock.reports.ReportRecordRepository.UploadRow;
  * written, secrets are removed from every free text and URL field before the record is persisted, and a
  * repeated Idempotency-Key returns the original result instead of inserting a second record. The whole
  * write goes through the single idempotency engine, and its replay record is stored only after this
- * transaction commits, so a failed write leaves nothing replayable behind.
+ * transaction commits, so a failed write leaves nothing replayable behind. A duplicate that arrives with
+ * the same key while this transaction is still open waits for its commit and then answers the original
+ * response, so the unique index of the Idempotency-Key never reaches the client as a database error
+ * (requirement RF-174, requirement RF-155).
  *
  * <p>An error record is a failure record whose type is {@code errors}; its details are written as an
  * immutable row of the error detail table, linked by foreign key, so the failures report can read them.
